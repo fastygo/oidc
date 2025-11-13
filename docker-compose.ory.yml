@@ -16,8 +16,6 @@ services:
       retries: 5
     volumes:
       - hydra_pg_data:/var/lib/postgresql/data
-    networks:
-      - ory
 
   hydra-migrate:
     image: oryd/hydra:v2.3.0
@@ -28,8 +26,6 @@ services:
     environment:
       DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
     command: migrate sql -e --yes
-    networks:
-      - ory
 
   hydra:
     image: oryd/hydra:v2.3.0
@@ -58,8 +54,6 @@ services:
       # System secret (set in Coolify env)
       SECRETS_SYSTEM: ${HYDRA_SECRETS_SYSTEM:?}
     command: serve all
-    networks:
-      - ory
     # Ports are NOT published on host. Traffic goes through APISIX only.
 
   # Demo Login/Consent UI for Hydra (dev-friendly)
@@ -73,8 +67,6 @@ services:
       HYDRA_ADMIN_URL: http://hydra:4445
       BASE_URL: https://${AUTH_DOMAIN:?}
       NODE_ENV: production
-    networks:
-      - ory
 
   apisix:
     image: apache/apisix:3.8.0-debian
@@ -143,9 +135,6 @@ services:
       - 'traefik.http.routers.apisix.rule=Host(`$${AUTH_DOMAIN:?}`)'
       - traefik.http.routers.apisix.tls=true
       - traefik.http.services.apisix.loadbalancer.server.port=9080
-
-networks:
-  ory:
 
 volumes:
   hydra_pg_data:
