@@ -1,0 +1,10 @@
+https://timeweb.cloud/docs/k8s/addons/dbaas-operator
+https://timeweb.cloud/docs/k8s/addons/openfaas
+https://timeweb.cloud/docs/k8s/addons/traefik
+https://timeweb.cloud/docs/k8s/addons/cert-manager
+https://timeweb.cloud/docs/k8s/addons/twc-alert-bot
+https://github.com/nemirlev/auth-service-example/blob/main/doc/ARTICLE.md
+https://habr.com/ru/articles/878802/
+https://www.metalnikovg.ru/blog/realiztsiya-sso-s-pomojyu-authentik
+https://pcnews.ru/top/blogs/day/alternativa_keycloak_kak_nastroit_sso_v_authentik-1599308.html#gsc.tab=0
+https://geekscircuit.com/set-up-authentik-sso-with-nginx-proxy-manager/
