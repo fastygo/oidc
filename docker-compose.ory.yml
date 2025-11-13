@@ -76,55 +76,64 @@ services:
     networks:
       - ory
 
-  # --- APISIX Gateway (published via Traefik) ---
-  etcd:
-    image: bitnami/etcd:latest
-    restart: unless-stopped
-    environment:
-      ALLOW_NONE_AUTHENTICATION: "yes"
-      ETCD_ENABLE_V2: "false"
-      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
-      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
-    volumes:
-      - etcd_data:/bitnami/etcd
-    healthcheck:
-      test: ["CMD-SHELL", "etcdctl --endpoints=http://localhost:2379 endpoint health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - ory
-
   apisix:
     image: apache/apisix:3.8.0-debian
     restart: unless-stopped
-    depends_on:
-      etcd:
-        condition: service_healthy
     environment:
-      # Minimal APISIX config supplied via env (no file mounts)
+      # APISIX in standalone (YAML) mode - no etcd required
       APISIX_CONFIG: |
         apisix:
           node_listen: 9080
-          enable_admin: true
-          admin_key:
-            - name: admin
-              key: ${APISIX_ADMIN_KEY:-edd1c9f034335f136f87ad84b625c8f1}
-              role: admin
+          enable_admin: false
         deployment:
-          role: data_plane
-          role_data_plane:
-            config_provider: etcd
-        etcd:
-          host:
-            - "http://etcd:2379"
-          prefix: "/apisix"
-          timeout: 30
+          role: traditional
+          role_traditional:
+            config_provider: yaml
+      # Standalone routes (loaded from apisix.yaml)
+      APISIX_YAML: |
+        routes:
+          - uri: "/.well-known/*"
+            upstream:
+              type: roundrobin
+              nodes:
+                "hydra:4444": 1
+            plugins:
+              proxy-rewrite:
+                headers:
+                  X-Forwarded-Proto: "https"
+          - uri: "/oauth2/*"
+            upstream:
+              type: roundrobin
+              nodes:
+                "hydra:4444": 1
+            plugins:
+              proxy-rewrite:
+                headers:
+                  X-Forwarded-Proto: "https"
+          - uri: "/login*"
+            upstream:
+              type: roundrobin
+              nodes:
+                "hydra-login-consent:3000": 1
+            plugins:
+              proxy-rewrite:
+                headers:
+                  X-Forwarded-Proto: "https"
+          - uri: "/consent*"
+            upstream:
+              type: roundrobin
+              nodes:
+                "hydra-login-consent:3000": 1
+            plugins:
+              proxy-rewrite:
+                headers:
+                  X-Forwarded-Proto: "https"
     command:
       - /bin/sh
       - -c
       - |
         printf "%s" "$$APISIX_CONFIG" > /usr/local/apisix/conf/config.yaml \
+        && printf "%s" "$$APISIX_YAML" > /usr/local/apisix/conf/apisix.yaml \
         && /docker-entrypoint.sh docker-start
     networks:
       - ory
@@ -135,70 +144,9 @@ services:
       - traefik.http.routers.apisix.tls=true
       - traefik.http.services.apisix.loadbalancer.server.port=9080
 
-  # Creates routes in APISIX via Admin API (no manual steps)
-  apisix-init:
-    image: curlimages/curl:8.10.1
-    restart: on-failure
-    depends_on:
-      apisix:
-        condition: service_started
-    environment:
-      APISIX_ADMIN: http://apisix:9180
-      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-edd1c9f034335f136f87ad84b625c8f1}
-    command:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-
-        wait_ready() {
-          for i in $(seq 1 30); do
-            if curl -fsS "$${APISIX_ADMIN}/apisix/admin/routes" -H "X-API-KEY: $${APISIX_ADMIN_KEY}" >/dev/null 2>&1; then
-              return 0
-            fi
-            sleep 2
-          done
-          echo "APISIX Admin API not ready" >&2
-          exit 1
-        }
-
-        mkroute() {
-          id="$1"; uri="$2"; upstream="$3"; port="$4"
-          curl -fsS -X PUT "$${APISIX_ADMIN}/apisix/admin/routes/$${id}" \
-            -H "X-API-KEY: $${APISIX_ADMIN_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"uri\": \"$${uri}\",
-              \"upstream\": { \"type\": \"roundrobin\", \"nodes\": { \"$${upstream}:$${port}\": 1 } },
-              \"plugins\": {
-                \"proxy-rewrite\": {
-                  \"headers\": { \"X-Forwarded-Proto\": \"https\" }
-                }
-              }
-            }"
-          echo
-        }
-
-        wait_ready
-
-        # Hydra (OIDC) public endpoints
-        mkroute hydra-well-known \"/.well-known/*\" hydra 4444
-        mkroute hydra-oauth2   \"/oauth2/*\"       hydra 4444
-
-        # Demo login/consent app (optional; dev only)
-        mkroute hydra-login   \"/login*\"   hydra-login-consent 3000
-        mkroute hydra-consent \"/consent*\" hydra-login-consent 3000
-
-        echo \"APISIX routes applied\"
-        # Keep container alive (so logs persist in Coolify)
-        sleep 3600
-    networks:
-      - ory
-
 networks:
   ory:
 
 volumes:
   hydra_pg_data:
-  etcd_data:
 
