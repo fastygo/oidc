@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  hydra-pg:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${HYDRA_DB_USER:-hydra}
+      POSTGRES_PASSWORD: ${HYDRA_DB_PASSWORD:?}
+      POSTGRES_DB: ${HYDRA_DB_NAME:-hydra}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${HYDRA_DB_USER:-hydra}"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - hydra_pg_data:/var/lib/postgresql/data
+    networks:
+      - intranet
+
+  hydra-migrate:
+    image: oryd/hydra:v2.3.0
+    depends_on:
+      - hydra-pg
+    environment:
+      DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
+    command: migrate sql -e --yes
+    restart: on-failure
+    networks:
+      - intranet
+
+  hydra:
+    image: oryd/hydra:v2.3.0
+    depends_on:
+      - hydra-migrate
+    environment:
+      DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
+      LOG_LEVEL: info
+      # Публичная/админ-службы без TLS, TLS завершается на APISIX/Traefik
+      SERVE_PUBLIC_TLS_ENABLED: "false"
+      SERVE_ADMIN_TLS_ENABLED: "false"
+      SERVE_PUBLIC_PORT: "4444"
+      SERVE_ADMIN_PORT: "4445"
+      # ВАЖНО: Укажите публичный Issuer (домен APISIX)
+      URLS_SELF_ISSUER: https://${OIDC_ISSUER_DOMAIN:?}
+      # Вариант A (dev): встроенное демо Login/Consent-приложение
+      URLS_LOGIN: https://${OIDC_ISSUER_DOMAIN:?}/login
+      URLS_CONSENT: https://${OIDC_ISSUER_DOMAIN:?}/consent
+      # Секрет для подписи (задайте через Coolify)
+      SECRETS_SYSTEM: ${HYDRA_SECRETS_SYSTEM:?}
+    command: serve all
+    networks:
+      - intranet
+    # Порты наружу НЕ публикуем. Доступ только через APISIX.
+
+  # (Опционально для dev) Демо-приложение Login/Consent
+  hydra-login-consent:
+    image: oryd/hydra-login-consent-node:v2.3.0
+    depends_on:
+      - hydra
+    environment:
+      HYDRA_ADMIN_URL: http://hydra:4445
+      # Базовый URL этого приложения за APISIX
+      BASE_URL: https://${OIDC_ISSUER_DOMAIN:?}
+      NODE_ENV: production
+    networks:
+      - intranet
+
+networks:
+  intranet:
+    external: true
+
+volumes:
+  hydra_pg_data:
