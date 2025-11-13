@@ -127,8 +127,6 @@ services:
         printf "%s" "$$APISIX_CONFIG" > /usr/local/apisix/conf/config.yaml \
         && printf "%s" "$$APISIX_YAML" > /usr/local/apisix/conf/apisix.yaml \
         && /docker-entrypoint.sh docker-start
-    networks:
-      - ory
     labels:
       - traefik.enable=true
       - traefik.http.routers.apisix.entryPoints=websecure
