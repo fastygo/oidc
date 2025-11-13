@@ -19,20 +19,37 @@ services:
 
   hydra-migrate:
     image: oryd/hydra:v2.3.0
-    restart: on-failure
+    restart: "no"
     depends_on:
       hydra-pg:
         condition: service_healthy
     environment:
       DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
-    command: migrate sql -e --yes
+      LOG_LEVEL: debug
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "Waiting for database to be fully ready..."
+        sleep 5
+        echo "Starting database migration..."
+        hydra migrate sql -e --yes
+        exit_code=$$?
+        if [ $$exit_code -eq 0 ]; then
+          echo "Migration completed successfully"
+        else
+          echo "Migration failed with exit code $$exit_code"
+          exit $$exit_code
+        fi
 
   hydra:
     image: oryd/hydra:v2.3.0
     restart: unless-stopped
     depends_on:
+      hydra-pg:
+        condition: service_healthy
       hydra-migrate:
-        condition: service_started
+        condition: service_completed_successfully
     environment:
       # Database
       DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
@@ -53,7 +70,20 @@ services:
 
       # System secret (set in Coolify env)
       SECRETS_SYSTEM: ${HYDRA_SECRETS_SYSTEM:?}
-    command: serve all
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "Waiting for migration to complete..."
+        sleep 3
+        echo "Starting Hydra..."
+        hydra serve all
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4444/.well-known/openid-configuration"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     # Ports are NOT published on host. Traffic goes through APISIX only.
 
   # Demo Login/Consent UI for Hydra (dev-friendly)
@@ -62,7 +92,7 @@ services:
     restart: unless-stopped
     depends_on:
       hydra:
-        condition: service_started
+        condition: service_healthy
     environment:
       HYDRA_ADMIN_URL: http://hydra:4445
       BASE_URL: https://${AUTH_DOMAIN:?}
@@ -71,6 +101,11 @@ services:
   apisix:
     image: apache/apisix:3.8.0-debian
     restart: unless-stopped
+    depends_on:
+      hydra:
+        condition: service_healthy
+      hydra-login-consent:
+        condition: service_started
     environment:
       # APISIX in standalone (YAML) mode - no etcd required
       APISIX_CONFIG: |
@@ -78,48 +113,60 @@ services:
           node_listen: 9080
           enable_admin: false
         deployment:
-          role: traditional
-          role_traditional:
+          role: data_plane
+          role_data_plane:
             config_provider: yaml
       # Standalone routes (loaded from apisix.yaml)
       APISIX_YAML: |
         routes:
-          - uri: "/.well-known/*"
+          - id: wellknown
+            name: wellknown-route
+            uri: /.well-known/*
             upstream:
               type: roundrobin
               nodes:
-                "hydra:4444": 1
+                hydra:4444: 1
             plugins:
               proxy-rewrite:
                 headers:
-                  X-Forwarded-Proto: "https"
-          - uri: "/oauth2/*"
+                  X-Forwarded-Proto: https
+          - id: oauth2
+            name: oauth2-route
+            uri: /oauth2/*
             upstream:
               type: roundrobin
               nodes:
-                "hydra:4444": 1
+                hydra:4444: 1
             plugins:
               proxy-rewrite:
                 headers:
-                  X-Forwarded-Proto: "https"
-          - uri: "/login*"
+                  X-Forwarded-Proto: https
+          - id: login
+            name: login-route
+            uris:
+              - /login
+              - /login/*
             upstream:
               type: roundrobin
               nodes:
-                "hydra-login-consent:3000": 1
+                hydra-login-consent:3000: 1
             plugins:
               proxy-rewrite:
                 headers:
-                  X-Forwarded-Proto: "https"
-          - uri: "/consent*"
+                  X-Forwarded-Proto: https
+          - id: consent
+            name: consent-route
+            uris:
+              - /consent
+              - /consent/*
             upstream:
               type: roundrobin
               nodes:
-                "hydra-login-consent:3000": 1
+                hydra-login-consent:3000: 1
             plugins:
               proxy-rewrite:
                 headers:
-                  X-Forwarded-Proto: "https"
+                  X-Forwarded-Proto: https
     command:
       - /bin/sh
       - -c
