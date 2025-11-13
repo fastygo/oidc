@@ -78,7 +78,7 @@ services:
 
   # --- APISIX Gateway (published via Traefik) ---
   etcd:
-    image: bitnami/etcd:3.5
+    image: bitnami/etcd:3
     restart: unless-stopped
     environment:
       ALLOW_NONE_AUTHENTICATION: "yes"
@@ -124,14 +124,14 @@ services:
       - /bin/sh
       - -c
       - |
-        printf "%s" "$APISIX_CONFIG" > /usr/local/apisix/conf/config.yaml \
+        printf "%s" "$$APISIX_CONFIG" > /usr/local/apisix/conf/config.yaml \
         && /docker-entrypoint.sh docker-start
     networks:
       - ory
     labels:
       - traefik.enable=true
       - traefik.http.routers.apisix.entryPoints=websecure
-      - traefik.http.routers.apisix.rule=Host(`${AUTH_DOMAIN:?}`)
+      - 'traefik.http.routers.apisix.rule=Host(`$${AUTH_DOMAIN:?}`)'
       - traefik.http.routers.apisix.tls=true
       - traefik.http.services.apisix.loadbalancer.server.port=9080
 
@@ -153,7 +153,7 @@ services:
 
         wait_ready() {
           for i in $(seq 1 30); do
-            if curl -fsS "${APISIX_ADMIN}/apisix/admin/routes" -H "X-API-KEY: ${APISIX_ADMIN_KEY}" >/dev/null 2>&1; then
+            if curl -fsS "$${APISIX_ADMIN}/apisix/admin/routes" -H "X-API-KEY: $${APISIX_ADMIN_KEY}" >/dev/null 2>&1; then
               return 0
             fi
             sleep 2
@@ -164,12 +164,12 @@ services:
 
         mkroute() {
           id="$1"; uri="$2"; upstream="$3"; port="$4"
-          curl -fsS -X PUT "${APISIX_ADMIN}/apisix/admin/routes/${id}" \
-            -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
+          curl -fsS -X PUT "$${APISIX_ADMIN}/apisix/admin/routes/$${id}" \
+            -H "X-API-KEY: $${APISIX_ADMIN_KEY}" \
             -H "Content-Type: application/json" \
             -d "{
-              \"uri\": \"${uri}\",
-              \"upstream\": { \"type\": \"roundrobin\", \"nodes\": { \"${upstream}:${port}\": 1 } },
+              \"uri\": \"$${uri}\",
+              \"upstream\": { \"type\": \"roundrobin\", \"nodes\": { \"$${upstream}:$${port}\": 1 } },
               \"plugins\": {
                 \"proxy-rewrite\": {
                   \"headers\": { \"X-Forwarded-Proto\": \"https\" }
