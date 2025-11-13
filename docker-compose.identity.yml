@@ -56,8 +56,12 @@ services:
       SELFSERVICE_FLOWS_VERIFICATION_UI_URL: https://${IDENTITY_DOMAIN:?}/
 
       # Mail (на проде замените на реальный SMTP URI)
-      COURIER_SMTP_CONNECTION_URI: noop://
-    command: serve --dev --watch-courier
+      COURIER_SMTP_CONNECTION_URI: smtp://maildev:1025/?skip_ssl_verify=true
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    volumes:
+      - type: bind
+        source: ./docker/kratos/configs
+        target: /etc/config/kratos
     networks:
       - intranet
 
@@ -73,6 +77,12 @@ services:
     networks:
       - intranet
     restart: on-failure
+
+  # (Dev) Почтовая песочница для Kratos (верификации/восстановления)
+  maildev:
+    image: maildev/maildev:2.1.0
+    networks:
+      - intranet
 
 networks:
   intranet:
