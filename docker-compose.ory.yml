@@ -1,0 +1,204 @@
+version: '3.8'
+
+services:
+  # --- OIDC Provider: ORY Hydra ---
+  hydra-pg:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${HYDRA_DB_USER:-hydra}
+      POSTGRES_PASSWORD: ${HYDRA_DB_PASSWORD:?}
+      POSTGRES_DB: ${HYDRA_DB_NAME:-hydra}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${HYDRA_DB_USER:-hydra}"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - hydra_pg_data:/var/lib/postgresql/data
+    networks:
+      - ory
+
+  hydra-migrate:
+    image: oryd/hydra:v2.3.0
+    restart: on-failure
+    depends_on:
+      hydra-pg:
+        condition: service_healthy
+    environment:
+      DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
+    command: migrate sql -e --yes
+    networks:
+      - ory
+
+  hydra:
+    image: oryd/hydra:v2.3.0
+    restart: unless-stopped
+    depends_on:
+      hydra-migrate:
+        condition: service_started
+    environment:
+      # Database
+      DSN: postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASSWORD:?}@hydra-pg:5432/${HYDRA_DB_NAME:-hydra}?sslmode=disable
+      LOG_LEVEL: info
+
+      # TLS is terminated by APISIX/Traefik (external TLS)
+      SERVE_PUBLIC_TLS_ENABLED: "false"
+      SERVE_ADMIN_TLS_ENABLED: "false"
+      SERVE_PUBLIC_PORT: "4444"
+      SERVE_ADMIN_PORT: "4445"
+
+      # External issuer (public URL behind APISIX/Traefik)
+      URLS_SELF_ISSUER: https://${AUTH_DOMAIN:?}
+
+      # Demo Login & Consent (served via APISIX to hydra-login-consent)
+      URLS_LOGIN: https://${AUTH_DOMAIN:?}/login
+      URLS_CONSENT: https://${AUTH_DOMAIN:?}/consent
+
+      # System secret (set in Coolify env)
+      SECRETS_SYSTEM: ${HYDRA_SECRETS_SYSTEM:?}
+    command: serve all
+    networks:
+      - ory
+    # Ports are NOT published on host. Traffic goes through APISIX only.
+
+  # Demo Login/Consent UI for Hydra (dev-friendly)
+  hydra-login-consent:
+    image: oryd/hydra-login-consent-node:v2.3.0
+    restart: unless-stopped
+    depends_on:
+      hydra:
+        condition: service_started
+    environment:
+      HYDRA_ADMIN_URL: http://hydra:4445
+      BASE_URL: https://${AUTH_DOMAIN:?}
+      NODE_ENV: production
+    networks:
+      - ory
+
+  # --- APISIX Gateway (published via Traefik) ---
+  etcd:
+    image: bitnami/etcd:3.5
+    restart: unless-stopped
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ENABLE_V2: "false"
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+    volumes:
+      - etcd_data:/bitnami/etcd
+    healthcheck:
+      test: ["CMD-SHELL", "etcdctl --endpoints=http://localhost:2379 endpoint health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ory
+
+  apisix:
+    image: apache/apisix:3.8.0-debian
+    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+    environment:
+      # Minimal APISIX config supplied via env (no file mounts)
+      APISIX_CONFIG: |
+        apisix:
+          node_listen: 9080
+          enable_admin: true
+          admin_key:
+            - name: admin
+              key: ${APISIX_ADMIN_KEY:-edd1c9f034335f136f87ad84b625c8f1}
+              role: admin
+        deployment:
+          role: data_plane
+          role_data_plane:
+            config_provider: etcd
+        etcd:
+          host:
+            - "http://etcd:2379"
+          prefix: "/apisix"
+          timeout: 30
+    command:
+      - /bin/sh
+      - -c
+      - |
+        printf "%s" "$APISIX_CONFIG" > /usr/local/apisix/conf/config.yaml \
+        && /docker-entrypoint.sh docker-start
+    networks:
+      - ory
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.apisix.entryPoints=websecure
+      - traefik.http.routers.apisix.rule=Host(`${AUTH_DOMAIN:?}`)
+      - traefik.http.routers.apisix.tls=true
+      - traefik.http.services.apisix.loadbalancer.server.port=9080
+
+  # Creates routes in APISIX via Admin API (no manual steps)
+  apisix-init:
+    image: curlimages/curl:8.10.1
+    restart: on-failure
+    depends_on:
+      apisix:
+        condition: service_started
+    environment:
+      APISIX_ADMIN: http://apisix:9180
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:-edd1c9f034335f136f87ad84b625c8f1}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+
+        wait_ready() {
+          for i in $(seq 1 30); do
+            if curl -fsS "${APISIX_ADMIN}/apisix/admin/routes" -H "X-API-KEY: ${APISIX_ADMIN_KEY}" >/dev/null 2>&1; then
+              return 0
+            fi
+            sleep 2
+          done
+          echo "APISIX Admin API not ready" >&2
+          exit 1
+        }
+
+        mkroute() {
+          id="$1"; uri="$2"; upstream="$3"; port="$4"
+          curl -fsS -X PUT "${APISIX_ADMIN}/apisix/admin/routes/${id}" \
+            -H "X-API-KEY: ${APISIX_ADMIN_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"uri\": \"${uri}\",
+              \"upstream\": { \"type\": \"roundrobin\", \"nodes\": { \"${upstream}:${port}\": 1 } },
+              \"plugins\": {
+                \"proxy-rewrite\": {
+                  \"headers\": { \"X-Forwarded-Proto\": \"https\" }
+                }
+              }
+            }"
+          echo
+        }
+
+        wait_ready
+
+        # Hydra (OIDC) public endpoints
+        mkroute hydra-well-known \"/.well-known/*\" hydra 4444
+        mkroute hydra-oauth2   \"/oauth2/*\"       hydra 4444
+
+        # Demo login/consent app (optional; dev only)
+        mkroute hydra-login   \"/login*\"   hydra-login-consent 3000
+        mkroute hydra-consent \"/consent*\" hydra-login-consent 3000
+
+        echo \"APISIX routes applied\"
+        # Keep container alive (so logs persist in Coolify)
+        sleep 3600
+    networks:
+      - ory
+
+networks:
+  ory:
+
+volumes:
+  hydra_pg_data:
+  etcd_data:
+
