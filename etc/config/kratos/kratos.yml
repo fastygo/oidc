@@ -1,0 +1,38 @@
+serve:
+  public:
+    base_url: http://kratos:4433/
+    cors:
+      enabled: true
+  admin:
+    base_url: http://kratos:4434/
+
+dsn: postgres://kratos:${SERVICE_PASSWORD_KRATOS-DB}@kratos-pg:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4
+
+log:
+  level: trace
+  format: text
+
+identity:
+  schemas:
+    - id: default
+      url: file:///etc/config/kratos/identity.schema.json
+
+courier:
+  smtp:
+    connection_uri: smtps://test:test@mailslurper:1025/?skip_ssl_verify=true
+
+selfservice:
+  default_browser_return_url: ${KRATOS_BROWSER_URL}/
+  flows:
+    error:
+      ui_url: ${KRATOS_BROWSER_URL}/error
+    settings:
+      ui_url: ${KRATOS_BROWSER_URL}/settings
+    recovery:
+      ui_url: ${KRATOS_BROWSER_URL}/recovery
+    verification:
+      ui_url: ${KRATOS_BROWSER_URL}/verification
+    login:
+      ui_url: ${KRATOS_BROWSER_URL}/login
+    registration:
+      ui_url: ${KRATOS_BROWSER_URL}/registration
