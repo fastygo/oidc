@@ -23,14 +23,13 @@ services:
       - TZ=${TZ:-Europe/Moscow}
       
       # Coolify Magic Variables - Secrets (auto-generated passwords)
-      - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=${SERVICE_PASSWORD_64_JWT}
-      - AUTHELIA_SESSION_SECRET=${SERVICE_PASSWORD_64_SESSION}
-      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${SERVICE_PASSWORD_64_STORAGE}
+      - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=${SERVICE_PASSWORD_64_JWT:-changeme}
+      - AUTHELIA_SESSION_SECRET=${SERVICE_PASSWORD_64_SESSION:-changeme}
+      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${SERVICE_PASSWORD_64_STORAGE:-changeme}
       
       # Coolify Magic Variables - URLs and Domains
-      # SERVICE_FQDN_AUTHELIA will generate: authelia-<uuid>.yourdomain.com
+      # This tells Coolify to generate FQDN and expose on port 9091
       - SERVICE_FQDN_AUTHELIA_9091
-      - AUTHELIA_PUBLIC_URL=${SERVICE_URL_AUTHELIA_9091}
       
       # Optional: Database credentials (if using PostgreSQL instead of SQLite)
       # - DB_USER=${SERVICE_USER_DB}
@@ -40,31 +39,15 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - LOG_FORMAT=${LOG_FORMAT:-text}
       - THEME=${THEME:-dark}
-      
-      # Domain configuration (will be set in Coolify UI)
-      - ROOT_DOMAIN=${ROOT_DOMAIN}
-      - AUTHELIA_DOMAIN=${SERVICE_FQDN_AUTHELIA}
     
     labels:
-      # Enable Traefik
-      - traefik.enable=true
-      
-      # HTTP Router
-      - traefik.http.routers.authelia.rule=Host(`${SERVICE_FQDN_AUTHELIA}`)
-      - traefik.http.routers.authelia.entrypoints=https
-      - traefik.http.routers.authelia.tls=true
-      - traefik.http.routers.authelia.tls.certresolver=letsencrypt
-      
-      # Service configuration
-      - traefik.http.services.authelia.loadbalancer.server.port=9091
+      # Coolify will automatically add Traefik labels based on SERVICE_FQDN_AUTHELIA_9091
+      # But we need to add ForwardAuth middleware manually
       
       # ForwardAuth Middleware - use this to protect other services
-      - traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/verify?rd=https://${SERVICE_FQDN_AUTHELIA}
+      - traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/verify?rd=https://authelia.${ROOT_DOMAIN:-example.com}
       - traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true
       - traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
-      
-      # Coolify labels
-      - coolify.managed=true
     
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/api/health"]

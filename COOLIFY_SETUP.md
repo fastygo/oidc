@@ -45,7 +45,7 @@ git push -u origin main
 ### 2.3 Coolify проверит репозиторий
 
 Coolify автоматически:
-- Найдет `docker-compose.yml`
+- Найдет `docker-compose.yaml` (не `.yml`)!
 - Обнаружит сервис `authelia`
 - Покажет список переменных окружения
 
