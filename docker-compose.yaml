@@ -30,8 +30,7 @@ services:
       - AUTHELIA_SESSION_SECRET=${SERVICE_PASSWORD_64_SESSION:-changeme}
       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${SERVICE_PASSWORD_64_STORAGE:-changeme}
       
-      # Coolify Magic Variables - URLs and Domains
-      - SERVICE_FQDN_AUTHELIA_9091
+      # Domain configuration
       - ROOT_DOMAIN=${ROOT_DOMAIN:-app-server.ru}
       
       # Application settings with defaults
@@ -39,14 +38,9 @@ services:
       - LOG_FORMAT=${LOG_FORMAT:-text}
       - THEME=${THEME:-dark}
     
-    labels:
-      # Coolify will automatically add Traefik labels based on SERVICE_FQDN_AUTHELIA_9091
-      # But we need to add ForwardAuth middleware manually
-      
-      # ForwardAuth Middleware - use this to protect other services
-      # - traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/verify?rd=https://authelia.${ROOT_DOMAIN:-example.com}
-      # - traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true
-      # - traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
+    # labels:
+      # Coolify automatically adds all necessary Traefik labels based on domain configured in UI
+      # No labels needed here - configure domain in Coolify UI instead
     
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/api/health"]
@@ -56,18 +50,12 @@ services:
       start_period: 40s
 
   # Example: Protected service using Authelia
-  # Uncomment to test authentication
+  # Uncomment to test authentication, then configure domain in Coolify UI
   # whoami:
   #   image: traefik/whoami:latest
   #   container_name: whoami-protected
   #   restart: unless-stopped
-  #   environment:
-  #     - SERVICE_FQDN_WHOAMI
   #   labels:
-  #     - traefik.enable=true
-  #     - traefik.http.routers.whoami.rule=Host(`${SERVICE_FQDN_WHOAMI}`)
-  #     - traefik.http.routers.whoami.entrypoints=https
-  #     - traefik.http.routers.whoami.tls=true
-  #     # Apply Authelia middleware to protect this service
+  #     # Only this label is needed - Coolify adds the rest automatically
   #     - traefik.http.routers.whoami.middlewares=authelia@docker
 
