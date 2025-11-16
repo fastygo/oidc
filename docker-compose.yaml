@@ -4,6 +4,9 @@ services:
     image: authelia/authelia:latest
     container_name: authelia
     restart: unless-stopped
+    command:
+      - authelia
+      - --config=/config/configuration.yml
     
     volumes:
       # Config directory

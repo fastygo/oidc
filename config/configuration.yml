@@ -22,8 +22,7 @@ log:
 theme: 'dark'
 
 # This URL is used for redirections
-# Will be set via environment variable: AUTHELIA_PUBLIC_URL
-# default_redirection_url: 'https://auth.example.com'
+default_redirection_url: 'https://authelia.app-server.ru'
 
 totp:
   disable: false
@@ -60,12 +59,13 @@ authentication_backend:
 
 # Access Control Rules
 access_control:
-  default_policy: 'deny'
+  default_policy: 'two_factor'
   
   rules:
     # Allow public access to Authelia endpoints
     - domain: 
-        - '*.example.com'
+        - 'authelia.app-server.ru'
+        - 'authelia-aswggw4wk0s8o408gcskss8o.app-server.ru'
       policy: 'bypass'
       resources:
         - '^/api/.*'
@@ -73,7 +73,7 @@ access_control:
     
     # Require two-factor authentication for all services
     - domain:
-        - '*.example.com'
+        - '*.app-server.ru'
       policy: 'two_factor'
     
     # Example: Admin-only access
@@ -95,13 +95,10 @@ session:
   inactivity: '5m'
   remember_me: '1M'
   
-  # Domain should be your root domain (will be set via env var)
-  # domain: 'example.com'
-  
   cookies:
-    - domain: 'example.com'
-      authelia_url: 'https://auth.example.com'
-      default_redirection_url: 'https://example.com'
+    - domain: 'app-server.ru'
+      authelia_url: 'https://authelia.app-server.ru'
+      default_redirection_url: 'https://app-server.ru'
 
 # Rate limiting for authentication attempts
 regulation:
