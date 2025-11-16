@@ -1,0 +1,61 @@
+services:
+  kratos-migrate:
+    image: 'oryd/kratos:v1.3.1'
+    environment:
+      - 'DSN=postgres://kratos:${SERVICE_PASSWORD_KRATOS-DB}@kratos-pg:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4'
+    volumes:
+      -
+        type: bind
+        source: ./docker/kratos/configs
+        target: /etc/config/kratos
+    depends_on:
+      - kratos-pg
+    command: '-c /etc/config/kratos/kratos.yml migrate sql -e --yes'
+    restart: on-failure
+    networks:
+      - intranet
+  kratos-pg:
+    image: 'postgres:17'
+    environment:
+      - POSTGRES_USER=kratos
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_KRATOS-DB}
+      - POSTGRES_DB=kratos
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U kratos'
+    networks:
+      - intranet
+  kratos-selfservice-ui-node:
+    image: 'oryd/kratos-selfservice-ui-node:v1.3.1'
+    environment:
+      - 'KRATOS_PUBLIC_URL=http://kratos:4433/'
+      - 'KRATOS_BROWSER_URL=${KRATOS_BROWSER_URL}'
+      - COOKIE_SECRET=${SERVICE_BASE64_KRATOS-COOKIE}
+      - CSRF_COOKIE_NAME=ory_csrf_ui
+      - CSRF_COOKIE_SECRET=${SERVICE_BASE64_KRATOS-CSRF}
+    networks:
+      - intranet
+    restart: on-failure
+  kratos:
+    depends_on:
+      - kratos-migrate
+    image: 'oryd/kratos:v1.3.1'
+    restart: unless-stopped
+    environment:
+      - 'DSN=postgres://kratos:${SERVICE_PASSWORD_KRATOS-DB}@kratos-pg:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4'
+      - LOG_LEVEL=trace
+    command: 'serve -c /etc/config/kratos/kratos.yml --dev --watch-courier'
+    volumes:
+      -
+        type: bind
+        source: ./docker/kratos/configs
+        target: /etc/config/kratos
+    networks:
+      - intranet
+  mailslurper:
+    image: 'oryd/mailslurper:latest-smtps'
+    networks:
+      - intranet
+networks:
+  intranet: null

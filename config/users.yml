@@ -1,0 +1,34 @@
+---
+###############################################################
+#                        Users Database                       #
+###############################################################
+
+users:
+  # Default admin user
+  # Username: admin
+  # Password: authelia (CHANGE THIS!)
+  # Generate new password hash: docker run authelia/authelia:latest authelia crypto hash generate argon2 --password 'yourpassword'
+  admin:
+    displayname: "Admin User"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$BpLfh09lYeuaZIhdINPaqg$ZR1PWztk9xGnMEV5dV9p4vgCLkPKlPDI+Bg7wVKVvNI"
+    email: "admin@example.com"
+    groups:
+      - admin
+      - users
+  
+  # Example: Regular user
+  # user:
+  #   displayname: "Regular User"
+  #   password: "$argon2id$v=19$m=65536,t=3,p=4$..."
+  #   email: "user@example.com"
+  #   groups:
+  #     - users
+
+# Password generation command:
+# docker run authelia/authelia:latest authelia crypto hash generate argon2 --password 'yourpassword'
+#
+# Or use online tool (not recommended for production):
+# https://argon2.online/
+#
+# Groups can be used in access control rules to restrict access
+

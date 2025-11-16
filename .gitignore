@@ -1,6 +1,37 @@
-.cursor
-.manual
+# Authelia runtime files
+config/db.sqlite3
+config/db.sqlite3-shm
+config/db.sqlite3-wal
+config/authelia.log
+config/notifications.txt
+
+# Secrets (never commit these!)
+secrets/*
+!secrets/.gitkeep
+!secrets/.gitignore
+
+# Environment files
 .env
-env.*
-env.development
-env.production
+.env.local
+.env.*
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.manual/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
