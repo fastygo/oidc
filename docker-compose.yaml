@@ -1,12 +1,12 @@
 ---
 services:
   authelia:
-    image: authelia/authelia:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: authelia-custom:latest
     container_name: authelia
     restart: unless-stopped
-    command:
-      - authelia
-      - --config=/config/configuration.yml
     
     volumes:
       # Config directory
@@ -25,18 +25,14 @@ services:
       # Timezone
       - TZ=${TZ:-Europe/Moscow}
       
-      # Coolify Magic Variables - Secrets (auto-generated passwords)
+      # Coolify Magic Variables - Secrets (passed to entrypoint script)
       - AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET=${SERVICE_PASSWORD_64_JWT:-changeme}
       - AUTHELIA_SESSION_SECRET=${SERVICE_PASSWORD_64_SESSION:-changeme}
       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${SERVICE_PASSWORD_64_STORAGE:-changeme}
       
       # Coolify Magic Variables - URLs and Domains
-      # This tells Coolify to generate FQDN and expose on port 9091
       - SERVICE_FQDN_AUTHELIA_9091
-      
-      # Optional: Database credentials (if using PostgreSQL instead of SQLite)
-      # - DB_USER=${SERVICE_USER_DB}
-      # - DB_PASSWORD=${SERVICE_PASSWORD_DB}
+      - ROOT_DOMAIN=${ROOT_DOMAIN:-app-server.ru}
       
       # Application settings with defaults
       - LOG_LEVEL=${LOG_LEVEL:-info}
@@ -48,9 +44,9 @@ services:
       # But we need to add ForwardAuth middleware manually
       
       # ForwardAuth Middleware - use this to protect other services
-      - traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/verify?rd=https://authelia.${ROOT_DOMAIN:-example.com}
-      - traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true
-      - traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
+      # - traefik.http.middlewares.authelia.forwardAuth.address=http://authelia:9091/api/verify?rd=https://authelia.${ROOT_DOMAIN:-example.com}
+      # - traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader=true
+      # - traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders=Remote-User,Remote-Groups,Remote-Name,Remote-Email
     
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/api/health"]

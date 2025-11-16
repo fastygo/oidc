@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime files (will be created in container)
+config/db.sqlite3
+config/db.sqlite3-shm
+config/db.sqlite3-wal
+config/authelia.log
+config/notifications.txt
+
+# Secrets (will be created by entrypoint)
+secrets/*
+!secrets/.gitkeep
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.bak
+*.backup
+
+# Manual files
+.manual/
+
+# Cursor
+.cursorignore
+
